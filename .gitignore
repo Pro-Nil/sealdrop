@@ -1,0 +1,10 @@
+node_modules/
+dist/
+data/
+.env
+web/public/pdfjs/
+.env.dev
+data-dev/
+sealdrop-upload.zip
+*.rar
+.claude/

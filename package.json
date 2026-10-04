@@ -1,0 +1,29 @@
+{
+  "name": "sealdrop",
+  "version": "1.0.0",
+  "description": "Self-hosted end-to-end encrypted file sharing with short-lived AI links",
+  "scripts": {
+    "dev:web": "node scripts/copy-pdfjs-assets.mjs && vite",
+    "dev:server": "node --watch server/src/index.ts",
+    "build": "node scripts/copy-pdfjs-assets.mjs && vite build",
+    "start": "node server/src/index.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test \"shared/**/*.test.ts\" \"server/test/**/*.test.ts\" \"web/src/**/*.test.ts\""
+  },
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "@fastify/static": "^10.1.4",
+    "fastify": "^5.12.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^6.3.289",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
+}

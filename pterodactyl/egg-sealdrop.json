@@ -1,0 +1,113 @@
+{
+    "_comment": "Sealdrop: self-hosted end-to-end encrypted file sharing. Import in Admin → Nests → Import Egg.",
+    "meta": {
+        "version": "PTDL_v2",
+        "update_url": null
+    },
+    "exported_at": "2026-09-27T06:58:38.535Z",
+    "name": "Sealdrop",
+    "author": "admin@example.com",
+    "description": "End-to-end encrypted file hosting with short-lived AI links, expiry, burn-after-reading and local redaction. Needs HTTPS in front (reverse proxy on the node).",
+    "features": null,
+    "docker_images": {
+        "Node.js 24": "ghcr.io/parkervcp/yolks:nodejs_24",
+        "Node.js 22": "ghcr.io/parkervcp/yolks:nodejs_22"
+    },
+    "file_denylist": [],
+    "startup": "if [[ ! -f package.json ]]; then echo \"Upload the Sealdrop files first (see README)\"; exit 1; fi; if [[ ! -f dist/web/index.html || \"{{REBUILD}}\" == \"1\" ]]; then npm ci --no-audit --no-fund && npm run build; fi; node server/src/index.ts",
+    "config": {
+        "files": "{}",
+        "startup": "{\"done\":\"[sealdrop] listening\"}",
+        "logs": "{}",
+        "stop": "^C"
+    },
+    "scripts": {
+        "installation": {
+            "script": "#!/bin/bash\n# Sealdrop installer. Runs once in a throwaway container; /mnt/server becomes /home/container.\nset -e\napt-get update -qq && apt-get install -y -qq git ca-certificates >/dev/null\ncd /mnt/server\n\nif [ -n \"${GIT_REPO}\" ]; then\n  if [ -d .git ]; then\n    echo \"Updating existing checkout\"\n    git pull --ff-only\n  else\n    echo \"Cloning ${GIT_REPO}\"\n    rm -rf /tmp/src\n    git clone --depth 1 ${GIT_BRANCH:+--branch \"${GIT_BRANCH}\"} \"${GIT_REPO}\" /tmp/src\n    cp -a /tmp/src/. /mnt/server/\n  fi\nfi\n\nif [ -f package.json ]; then\n  npm ci --no-audit --no-fund\n  npm run build\n  echo \"Sealdrop built.\"\nelse\n  echo \"No code yet. Upload the Sealdrop files (unzip them into /home/container) and restart: the server builds itself on first start.\"\nfi\nmkdir -p data\n",
+            "container": "node:24-bookworm-slim",
+            "entrypoint": "bash"
+        }
+    },
+    "variables": [
+        {
+            "name": "Upload secret",
+            "description": "Password needed to upload (viewing links never needs it). At least 16 characters; generate with: openssl rand -base64 32",
+            "env_variable": "UPLOAD_SECRET",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|min:16|max:200",
+            "field_type": "text"
+        },
+        {
+            "name": "Max file size (MB)",
+            "description": "Largest file accepted.",
+            "env_variable": "MAX_FILE_MB",
+            "default_value": "2048",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|integer|min:1|max:1000000",
+            "field_type": "text"
+        },
+        {
+            "name": "Max temporary lifetime (days)",
+            "description": "Longest expiry a temporary file may have.",
+            "env_variable": "MAX_TEMP_DAYS",
+            "default_value": "365",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|integer|min:1|max:3650",
+            "field_type": "text"
+        },
+        {
+            "name": "Max AI link lifetime (hours)",
+            "description": "Longest lifetime of an AI link.",
+            "env_variable": "MAX_AI_LINK_HOURS",
+            "default_value": "24",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|integer|min:1|max:720",
+            "field_type": "text"
+        },
+        {
+            "name": "Behind reverse proxy",
+            "description": "true when a reverse proxy (Caddy/nginx) sits in front, which it should.",
+            "env_variable": "TRUST_PROXY",
+            "default_value": "true",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|in:true,false",
+            "field_type": "text"
+        },
+        {
+            "name": "Git repository",
+            "description": "Optional. HTTPS URL of your Sealdrop repo, cloned at install / reinstall. Leave empty to upload the files yourself.",
+            "env_variable": "GIT_REPO",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|string|max:300",
+            "field_type": "text"
+        },
+        {
+            "name": "Git branch",
+            "description": "Optional branch to clone.",
+            "env_variable": "GIT_BRANCH",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|string|max:100",
+            "field_type": "text"
+        },
+        {
+            "name": "Rebuild on start",
+            "description": "1 = reinstall dependencies and rebuild the web app on every start (use after uploading new code). 0 = only when missing.",
+            "env_variable": "REBUILD",
+            "default_value": "0",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|in:0,1",
+            "field_type": "text"
+        }
+    ]
+}

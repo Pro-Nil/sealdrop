@@ -1,0 +1,8 @@
+node_modules
+dist
+data
+data-dev
+.env
+.env.dev
+web/public/pdfjs
+.git

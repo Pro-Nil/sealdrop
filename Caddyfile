@@ -1,0 +1,16 @@
+# TLS terminates HERE, on your VM. Caddy gets and renews the certificate automatically.
+# There is deliberately no `log` directive: Caddy writes no access logs, so AI-link URLs
+# (which carry a file key) are never written to disk.
+
+{$DOMAIN} {
+	request_body {
+		max_size 8MB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
+		-Server
+	}
+
+	reverse_proxy app:3000
+}
