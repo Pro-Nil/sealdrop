@@ -67,22 +67,99 @@ Use the custom egg in [`pterodactyl/egg-sealdrop.json`](pterodactyl/egg-sealdrop
    - **Memory:** 512 MB is plenty.
    - **Disk:** as much as you want to store, plus about 400 MB for dependencies.
    - **Variables:** set a long random **Upload secret** (`openssl rand -base64 32`).
-4. **Get the code in:** either
-   - set **Git repository** to your repo's HTTPS URL before installing, and the installer clones and builds it; or
-   - leave it empty and upload the files: zip the project (without `node_modules`, `dist`, `data`), upload it in the File Manager, *Unarchive*, then start. The first start builds the frontend (1–2 minutes).
-5. **Put HTTPS in front** with a reverse proxy on the node itself, so TLS ends on your machine. For example, Caddy on the host:
+4. **Get the code in:** the egg's **Git repository** variable defaults to `https://github.com/Pro-Nil/sealdrop`, so the installer clones and builds it automatically. Point it at your own fork if you have one.
+   To upload the files yourself instead, clear the variable, zip the project (without `node_modules`, `dist`, `data`), upload it in the File Manager, *Unarchive*, then start. The first start builds the frontend (1–2 minutes).
+5. **Start the server.** The console shows `[sealdrop] listening on 0.0.0.0:8095` when it's ready. It's now reachable only from the node itself, so the next step puts HTTPS in front of it.
 
-   ```
-   files.example.com {
-       request_body {
-           max_size 8MB
-       }
-       header Strict-Transport-Security "max-age=63072000; includeSubDomains"
-       reverse_proxy 127.0.0.1:8095
-   }
-   ```
+### HTTPS with nginx (on the Pterodactyl node)
 
-   Nginx works too. Use `client_max_body_size 8m;`, `proxy_request_buffering off;`, `proxy_buffering off;`, and `access_log off;` so AI-link URLs are never logged.
+The Pterodactyl panel is usually already served by nginx, so Sealdrop gets one more `server` block next to it. TLS ends on your node, so nobody in between sees file contents or AI-link keys. Run these on the **node** (the machine running Wings), as root or with `sudo`.
+
+**1. DNS.** Create an `A` record (and `AAAA` for IPv6) for your domain, say `files.example.com`, pointing at the node's public IP. On Cloudflare, keep it **DNS only** (grey cloud). Proxying would end TLS at Cloudflare.
+
+**2. Install nginx and certbot** (skip whatever you already have):
+
+```bash
+apt update && apt install -y nginx certbot python3-certbot-nginx
+```
+
+**3. Get a certificate.** Ports 80 and 443 must be open to the internet:
+
+```bash
+certbot certonly --nginx -d files.example.com
+```
+
+**4. Create `/etc/nginx/sites-available/sealdrop.conf`**, replacing `files.example.com` and `8095` with your domain and allocation port:
+
+```nginx
+server {
+    listen 80;
+    listen [::]:80;
+    server_name files.example.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;                      # nginx < 1.25.1: remove this line and use "listen 443 ssl http2;"
+    server_name files.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/files.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/files.example.com/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_session_cache   shared:sealdrop:10m;
+    server_tokens off;
+
+    # AI-link URLs contain a file key: never write requests to disk.
+    access_log off;
+    error_log  /var/log/nginx/sealdrop.error.log crit;
+
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains" always;
+
+    # Uploads arrive as encrypted 4 MiB chunks.
+    client_max_body_size 8m;
+
+    location / {
+        proxy_pass http://127.0.0.1:8095;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        # Overwrite (don't append) so clients can't spoof their IP past the rate limiter.
+        proxy_set_header X-Forwarded-For   $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Stream uploads and downloads instead of buffering whole files on disk.
+        proxy_request_buffering off;
+        proxy_buffering         off;
+        proxy_read_timeout      300s;
+        proxy_send_timeout      300s;
+    }
+}
+```
+
+**5. Enable it and reload:**
+
+```bash
+ln -s /etc/nginx/sites-available/sealdrop.conf /etc/nginx/sites-enabled/sealdrop.conf
+nginx -t && systemctl reload nginx
+```
+
+**6. Check it.**
+- `https://files.example.com` should show the upload page with a valid certificate.
+- From **another machine**, `curl -m 5 http://NODE_PUBLIC_IP:8095` must **fail**. If it answers, the allocation is on the public IP instead of `127.0.0.1`: fix it in step 2.
+
+Certificates renew on their own: certbot's timer reloads nginx after each renewal. Confirm with `certbot renew --dry-run`.
+
+| Problem | Cause |
+|---|---|
+| `502 Bad Gateway` | The Sealdrop server is stopped, still building, or the port in `proxy_pass` doesn't match the allocation. |
+| `413 Request Entity Too Large` | `client_max_body_size` is missing or below `8m`. |
+| Big downloads stop partway | Raise `proxy_read_timeout` / `proxy_send_timeout`. |
+| Panel stopped working | Two configs use the same `server_name`. Each domain needs its own block. |
+
+Prefer Caddy? Install it on the node and use the same idea: `files.example.com { request_body { max_size 8MB } reverse_proxy 127.0.0.1:8095 }`. It gets certificates automatically and keeps no access logs by default.
+
+### Updating and data
 
 **Updating:** upload the new files (or use *Reinstall* with a Git repo), set **Rebuild on start** to `1`, restart once, then set it back to `0`.
 

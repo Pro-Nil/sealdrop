@@ -236,6 +236,21 @@ describe('sealdrop API', () => {
     assert.equal(done.statusCode, 400);
   });
 
+  test('spoofed X-Forwarded-For cannot dodge the rate limiter behind a proxy', async () => {
+    await freshApp({ trustProxy: 1 });
+    const statuses: number[] = [];
+    for (let i = 0; i < 32; i++) {
+      // Client invents a new leftmost address each time; the proxy appends the real one.
+      const r = await built.app.inject({
+        method: 'POST', url: '/api/auth/check',
+        headers: { 'x-upload-secret': 'wrong', 'x-forwarded-for': `10.0.0.${i}, 203.0.113.7` },
+      });
+      statuses.push(r.statusCode);
+    }
+    assert.equal(statuses[0], 401);
+    assert.equal(statuses.at(-1), 429, 'all attempts count against the real client IP');
+  });
+
   test('security headers are present', async () => {
     const r = await built.app.inject({ method: 'GET', url: '/api/config' });
     assert.match(String(r.headers['content-security-policy']), /default-src 'self'/);

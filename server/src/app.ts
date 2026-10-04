@@ -41,7 +41,12 @@ export async function buildApp(config: Config): Promise<App> {
   const ctx: Ctx = { db, blobs, config, limiter: new RateLimiter() };
 
   // No request logging at all: URLs can carry AI-link keys.
-  const app = Fastify({ logger: false, trustProxy: config.trustProxy, bodyLimit: 64 * 1024 });
+  const app = Fastify({
+    logger: false,
+    bodyLimit: 64 * 1024,
+    // Trust only the first N hops (the reverse proxy we connect through), never client-sent ones.
+    trustProxy: config.trustProxy === false ? false : (_addr: string, hop: number) => hop < (config.trustProxy as number),
+  });
 
   app.addContentTypeParser('application/octet-stream', { parseAs: 'buffer', bodyLimit: ENC_CHUNK_SIZE }, (_req, data, done) => {
     done(null, data);

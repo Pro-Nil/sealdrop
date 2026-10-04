@@ -12,7 +12,8 @@ export interface Config {
   viewSessionSeconds: number;
   maxTempSeconds: number;
   maxAiLinkSeconds: number;
-  trustProxy: boolean;
+  /** Proxy hops to trust for X-Forwarded-For (1 = the reverse proxy in front), or false. */
+  trustProxy: false | number;
   /** Built frontend (dist/web). null disables static serving (dev / tests). */
   webDir: string | null;
   cleanupIntervalMs: number;
@@ -46,7 +47,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     viewSessionSeconds: int(env, 'VIEW_SESSION_SECONDS', 3600),
     maxTempSeconds: int(env, 'MAX_TEMP_DAYS', 365) * 86400,
     maxAiLinkSeconds: int(env, 'MAX_AI_LINK_HOURS', 24) * 3600,
-    trustProxy: env.TRUST_PROXY !== 'false',
+    // Trust exactly one hop: the client IP is the address our own proxy appended, so a
+    // client-supplied X-Forwarded-For cannot dodge rate limits.
+    trustProxy: env.TRUST_PROXY === 'false' ? false : 1,
     webDir: existsSync(webDir) ? webDir : null,
     cleanupIntervalMs: 60_000,
     now: Date.now,
